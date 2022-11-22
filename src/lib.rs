@@ -14,6 +14,8 @@ impl<T,F:FnOnce(T)> ThreadState for FuncResume<T,F> {
         (self.call)(self.state)
     }
 }
+/// Implements ThreadState to restore registers to a specified state
+/// Warning: rax is clobbered for the sake of changing control flow upon restoration when using new
 #[derive(Clone,Copy)]
 struct RegisterReset{
     rax: u64,
@@ -72,7 +74,6 @@ impl RegisterReset {
                  "mov {}, r13",
                  "mov {}, r14",
                  "mov {}, r15",
-                 "mov {}, rip",
                  out(reg) rax,
                  out(reg) rbx,
                  out(reg) rcx,
@@ -88,8 +89,9 @@ impl RegisterReset {
                  out(reg) r12,
                  out(reg) r13,
                  out(reg) r14,
-                 out(reg) r15,
-                 out(reg) rip);
+                 out(reg) r15);
+            // set rip to the return location from new
+            rip = *(rsi as *mut u64).offset(1)
         }
         Self {
             rax,
@@ -111,14 +113,10 @@ impl RegisterReset {
             rip
         }
     }
-    fn change_rip(&self,new_rip:u64)->Self{
-        let mut new = self.clone();
-        new.rip = new_rip;
-        new
-    }
 }
 impl ThreadState for RegisterReset {
-    unsafe fn restore(self) {
+    // should technically return ! but the never type is experimental so can't
+    unsafe fn restore(self){
         asm!("mov rax, {}",
              "mov rbx, {}",
              "mov rcx, {}",
@@ -135,6 +133,8 @@ impl ThreadState for RegisterReset {
              "mov r13, {}",
              "mov r14, {}",
              "mov r15, {}",
+             // NOTE: changing rip must ALWAYS BE DONE AFTER EVERYTHING ELSE because it changes
+             // control flow away from here
              "mov rip, {}",
              in(reg) self.rax,
              in(reg) self.rbx,
@@ -153,6 +153,34 @@ impl ThreadState for RegisterReset {
              in(reg) self.r14,
              in(reg) self.r15,
              in(reg) self.rip);
+    }
+}
+// using lifetimes instead of boxes because that should be manageable
+struct MemRegReset<'a>{
+    //pointer to a null type due to type of value we're copying being unknown
+    memory: Vec<(*mut (), &'a[u8])>,
+    regs: RegisterReset
+}
+impl MemRegReset {
+    fn new()->MemRegReset{
+        let tmp_rsp:*mut u64;
+        let tmp_rip: u64;
+        unsafe {
+            asm!("mov {}, rsp",out(reg) tmp_rsp);
+            tmp_rip = *tmp_rsp.offset(1);
+        }
+        let regs = RegisterReset::new();
+        regs.rip = tmp_rip;
+        MemRegReset { memory: Vec::new(), regs: RegisterReset::new() }
+    }
+}
+impl<'a> ThreadState for MemRegReset<'a>{
+    unsafe fn restore(self) {
+        //restore all parts of memory we've got
+        for (loc,data) in self.memory{
+            data.as_ptr().copy_to(loc as *mut u8, data.len())
+        }
+        self.regs.restore()
     }
 }
 struct SpinRuntime{
