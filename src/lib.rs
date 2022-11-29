@@ -3,6 +3,7 @@ use std::arch::asm;
 /// in order to be used to restore the state upon resuming a task including jumping back to the
 /// appropriate point in the program
 trait ThreadState{
+    #[allow(improper_ctypes_definitions)]
     unsafe extern "C" fn restore(self);
 }
 struct FuncResume<T,F:FnOnce(T)>{
@@ -10,6 +11,7 @@ struct FuncResume<T,F:FnOnce(T)>{
     call: F
 }
 impl<T,F:FnOnce(T)> ThreadState for FuncResume<T,F> {
+    #[allow(improper_ctypes_definitions)]
      unsafe extern "C" fn restore(self) {
         (self.call)(self.state)
     }
@@ -39,6 +41,7 @@ struct RegisterReset{
 impl RegisterReset {
     /// use asm macro to grab all the register values and create a new struct(this code can
     /// definitely be shortened)
+    #[allow(improper_ctypes_definitions)]
     extern "C" fn new()-> RegisterReset{
         let rax: u64;
         let rbx: u64;
@@ -116,6 +119,7 @@ impl RegisterReset {
 }
 impl ThreadState for RegisterReset {
     // should technically return ! but the never type is experimental so can't
+    #[allow(improper_ctypes_definitions)]
     unsafe extern "C" fn restore(self){
         asm!("mov rax, {}",
              "mov rbx, {}",
@@ -162,6 +166,7 @@ struct MemRegReset{
     regs: RegisterReset
 }
 impl MemRegReset {
+    #[allow(improper_ctypes_definitions)]
     extern "C" fn new()->MemRegReset{
         let tmp_rsp:*mut u64;
         let tmp_rip: u64;
@@ -175,6 +180,7 @@ impl MemRegReset {
     }
 }
 impl ThreadState for MemRegReset{
+    #[allow(improper_ctypes_definitions)]
     unsafe extern "C" fn restore(self) {
         //restore all parts of memory we've got
         for (loc,data) in self.memory{
