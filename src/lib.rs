@@ -3,14 +3,14 @@ use std::arch::asm;
 /// in order to be used to restore the state upon resuming a task including jumping back to the
 /// appropriate point in the program
 trait ThreadState{
-    unsafe fn restore(self);
+    unsafe extern "C" fn restore(self);
 }
 struct FuncResume<T,F:FnOnce(T)>{
     state: T,
     call: F
 }
 impl<T,F:FnOnce(T)> ThreadState for FuncResume<T,F> {
-    unsafe fn restore(self) {
+     unsafe extern "C" fn restore(self) {
         (self.call)(self.state)
     }
 }
@@ -39,7 +39,7 @@ struct RegisterReset{
 impl RegisterReset {
     /// use asm macro to grab all the register values and create a new struct(this code can
     /// definitely be shortened)
-    fn new()-> RegisterReset{
+    extern "C" fn new()-> RegisterReset{
         let rax: u64;
         let rbx: u64;
         let rcx: u64;
@@ -116,7 +116,7 @@ impl RegisterReset {
 }
 impl ThreadState for RegisterReset {
     // should technically return ! but the never type is experimental so can't
-    unsafe fn restore(self){
+    unsafe extern "C" fn restore(self){
         asm!("mov rax, {}",
              "mov rbx, {}",
              "mov rcx, {}",
@@ -155,27 +155,27 @@ impl ThreadState for RegisterReset {
              in(reg) self.rip);
     }
 }
-// using lifetimes instead of boxes because that should be manageable
-struct MemRegReset<'a>{
+
+struct MemRegReset{
     //pointer to a null type due to type of value we're copying being unknown
-    memory: Vec<(*mut (), &'a[u8])>,
+    memory: Vec<(*mut (), Box<[u8]>)>,
     regs: RegisterReset
 }
 impl MemRegReset {
-    fn new()->MemRegReset{
+    extern "C" fn new()->MemRegReset{
         let tmp_rsp:*mut u64;
         let tmp_rip: u64;
         unsafe {
             asm!("mov {}, rsp",out(reg) tmp_rsp);
             tmp_rip = *tmp_rsp.offset(1);
         }
-        let regs = RegisterReset::new();
+        let mut regs = RegisterReset::new();
         regs.rip = tmp_rip;
-        MemRegReset { memory: Vec::new(), regs: RegisterReset::new() }
+        MemRegReset { memory: Vec::new(), regs }
     }
 }
-impl<'a> ThreadState for MemRegReset<'a>{
-    unsafe fn restore(self) {
+impl ThreadState for MemRegReset{
+    unsafe extern "C" fn restore(self) {
         //restore all parts of memory we've got
         for (loc,data) in self.memory{
             data.as_ptr().copy_to(loc as *mut u8, data.len())
