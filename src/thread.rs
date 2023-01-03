@@ -8,3 +8,7 @@ enum ThreadStatus {
 pub struct SpinThread{
     status:ThreadStatus
 }
+
+unsafe impl Send for ThreadStatus{}
+unsafe impl Send for SpinThread{}
+
