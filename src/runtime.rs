@@ -1,10 +1,11 @@
 use crate::thread::*;
 use crate::worker::*;
+use crate::state_management::*;
 
 #[non_exhaustive]
 pub struct Runtime{
     threads: Vec<SpinThread>,
-    workers: Vec<Worker>
+    workers: Vec<WorkerHandle>
 }
 
 impl Runtime {
@@ -14,9 +15,9 @@ impl Runtime {
             workers:Vec::new()
         }
     }
-    fn new(worker_count:usize)->Self{
+    pub fn new(worker_count:usize)->Self{
         let mut workers = Vec::new();
-        let (send,mut recv) = std::sync::mpsc::channel::<std::sync::Arc<Worker>>();
+        let (send, recv) = std::sync::mpsc::channel();
         //multi threaded worker creation because might as well have workers bootstrap themselves
         for _ in 0..worker_count {
             Worker::new_laborer(send.clone());
@@ -29,6 +30,9 @@ impl Runtime {
             threads: Vec::new(),
             workers
         }
+    }
+    pub fn new_consume<T:ThreadState>(){
+
     }
 }
 impl Default for Runtime {

@@ -11,4 +11,5 @@ pub struct SpinThread{
 
 unsafe impl Send for ThreadStatus{}
 unsafe impl Send for SpinThread{}
-
+unsafe impl Sync for ThreadStatus{}
+unsafe impl Sync for SpinThread{}
